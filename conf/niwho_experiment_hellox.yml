@@ -1,0 +1,14 @@
+core:
+    http_bind: ":8091"
+    log_level: 4 # 2->error 3->warn 4->info 5->debug
+    mode: "release"
+
+report_send:
+    mail:
+        - wutao@imusics.net
+    dingding: e4fa2ac5d689ec738e46800d4f57df1198fff5df6932e16de96ed0297917a117
+    db: 
+        name: ""
+        server: ""
+        user: ""
+        passwd: ""
