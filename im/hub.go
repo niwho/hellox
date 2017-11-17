@@ -28,6 +28,7 @@ type Hub struct {
 var hubIns *Hub
 
 func init() {
+	InitLonlyClients()
 	hubIns = NewHub()
 	go hubIns.run()
 }
@@ -59,12 +60,10 @@ func (h *Hub) run() {
 			// h.clients[client] = ONLINE
 			h.clients.Set(client.String(), client)
 		case client := <-h.unregister:
-			if v, ok := h.clients.Get(client.String()); ok {
-				if val, ok := v.(*Client); ok {
-					val.Close()
-				}
+			_ = client
+			// 同时删除这个对象?
+			// h.clients.
 
-			}
 		case message := <-h.hubCh:
 			h.clients.IterCb(func(key string, v interface{}) {
 				if client, ok := v.(*Client); ok && client.isOnline {

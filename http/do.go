@@ -1,6 +1,8 @@
 package http
 
 import (
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/niwho/hellox/im"
 )
@@ -16,4 +18,12 @@ func stat(c *gin.Context) {
 
 func serveWS(c *gin.Context) {
 	im.ServeWs(c.Writer, c.Request)
+}
+
+func broadcast(c *gin.Context) {
+	text := c.Query("text")
+	text = strings.TrimSpace(text)
+	if text != "" {
+		im.Broadcast(text)
+	}
 }

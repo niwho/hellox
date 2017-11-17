@@ -34,6 +34,11 @@ var (
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
+	CheckOrigin:     func(r *http.Request) bool { return true },
+}
+
+type Extra struct {
+	Matched *Client
 }
 
 // Client is a middleman between the websocket connection and the hub.
@@ -47,6 +52,10 @@ type Client struct {
 	isOnline bool
 	// Buffered channel of outbound messages.
 	send chan Msg
+
+	quit chan struct{}
+
+	extra Extra
 }
 
 func (c *Client) String() string {
@@ -56,6 +65,7 @@ func (c *Client) String() string {
 func (c *Client) Close() {
 	c.isOnline = false
 	c.conn.Close()
+	PopFC(c)
 }
 
 // readPump pumps messages from the websocket connection to the hub.
@@ -65,8 +75,10 @@ func (c *Client) Close() {
 // reads from this goroutine.
 func (c *Client) readPump() {
 	defer func() {
+		c.quit <- struct{}{}
+		logs.Log(nil).Info("readpump exit")
 		c.hub.unregister <- c
-		c.conn.Close()
+		c.Close()
 	}()
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
@@ -80,19 +92,44 @@ func (c *Client) readPump() {
 			break
 		}
 		// message = bytes.TrimSpace(bytes.Replace(message, newline, space, -1))
+		logs.Log(logs.F{"message": message, "uid": c.ID}).Info()
+		to := ""
+		text := string(message)
 		msgJson, err := simplejson.NewJson(message)
-		if err != nil {
-			fmt.Printf("parse json err:%v", err)
+		if err == nil {
+			to, _ = msgJson.Get("to_user").String()
+			text, _ = msgJson.Get("text").String()
+		}
+		if c.extra.Matched == nil {
+			continue
+		} else {
+			msg := Msg{
+				Data: text,
+			}
+			c.extra.Matched.PushMessage(msg)
 			continue
 		}
-		to, _ := msgJson.Get("to_user").String()
-		text, _ := msgJson.Get("text").String()
 		// 是不是直接向to_user用户写消息
 		c.hub.hubCh <- Msg{
 			FromUser: c.String(),
 			ToUser:   to,
 			Data:     string(text),
 		}
+	}
+}
+
+func (c *Client) ClearQuit() {
+	select {
+	case <-c.quit:
+	default:
+		return
+	}
+}
+
+func (c *Client) PushMessage(message Msg) {
+	select {
+	case c.send <- message:
+		//default:
 	}
 }
 
@@ -104,8 +141,9 @@ func (c *Client) readPump() {
 func (c *Client) writePump() {
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		logs.Log(nil).Info("writepump exit")
 		ticker.Stop()
-		c.conn.Close()
+		//c.Close()
 	}()
 	for {
 		select {
@@ -139,9 +177,13 @@ func (c *Client) writePump() {
 			if err := c.conn.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
 				return
 			}
+		case <-c.quit:
+			return
 		}
 	}
 }
+
+var TT int64
 
 // serveWs handles websocket requests from the peer.
 func ServeWs(w http.ResponseWriter, r *http.Request) {
@@ -151,19 +193,29 @@ func ServeWs(w http.ResponseWriter, r *http.Request) {
 		log.Println(err)
 		return
 	}
+
+	//http.SetCookie
+	//r.Cookie("uid")
+
 	// 用户+设备唯一识别码
-	uid := "123456" + conn.RemoteAddr().String()
+
+	TT += 1
+	uid := "123456" + conn.RemoteAddr().String() + fmt.Sprintf("%d", TT)
 	var client *Client
 	if v, ok := hub.clients.Get(uid); ok {
 		client, _ = v.(*Client)
+		client.conn = conn
+		client.isOnline = true
 	} else {
-		client = &Client{ID: uid, hub: hub, conn: conn, send: make(chan Msg, 256), isOnline: true}
+		client = &Client{ID: uid, hub: hub, conn: conn, send: make(chan Msg, 256), isOnline: true, quit: make(chan struct{}, 1)}
 		client.hub.register <- client
 	}
+	PushFC(client)
 
 	logs.Log(logs.F{"uid": uid}).Info("wsssssssssss")
 	// Allow collection of memory referenced by the caller by doing all work in
 	// new goroutines.
+	client.ClearQuit()
 	go client.writePump()
 	go client.readPump()
 }

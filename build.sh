@@ -8,8 +8,9 @@ if [ -z "$PRODUCT" ] || [ -z "$SUBSYS" ] || [ -z "$MODULE" ]; then
 fi
 REL_NAME=${PRODUCT}_${SUBSYS}_${MODULE}
 
-mkdir -p output/bin output/conf
+mkdir -p output/bin output/conf output/static
 cp script/bootstrap.sh script/settings.py output
+cp -rf static/* output/static/
 chmod +x output/bootstrap.sh
 cp -rf conf/* output/conf/
 

@@ -19,8 +19,16 @@ func InitHttp() {
 	gin.SetMode(config.Conf.Core.Mode)
 	router := gin.Default()
 	pprof.Register(router, nil)
+
+	router.Static("/static", "./static/static")
+	router.StaticFile("/index", "./static/index.html")
+	router.StaticFile("/", "./static/index.html")
+	router.StaticFile("/favicon.ico", "./static/favicon.ico")
+	router.StaticFile("/manifest.json", "./static/manifest.json")
+
 	router.POST("/stat", stat)
 	router.GET("/ws", serveWS)
+	router.GET("/broadcast", broadcast)
 	// router .Run(config.Conf.API.BindAddr)
 	srv := &http.Server{
 		Addr:    config.Conf.Core.BindAddr,
